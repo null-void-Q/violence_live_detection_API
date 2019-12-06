@@ -78,7 +78,7 @@ def classify_live(classes_list,model):
 			with lock:
 				outputFrame = labeled   	  
 		else:
-				vs.set(cv2.CAP_PROP_POS_FRAMES,0)
+				cap.set(cv2.CAP_PROP_POS_FRAMES,0)
 				
 		key = cv2.waitKey(10)
 		if key == ord('q'):
