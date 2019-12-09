@@ -103,7 +103,6 @@ def calculate_prediction(predictions, class_map):
     return result
 
 def classify_clip(clip, model):
-
     clip = np.expand_dims(clip,axis=0)
     out_logits = model.predict(clip, batch_size=len(clip), verbose=0, steps=None)
     predictions = out_logits
