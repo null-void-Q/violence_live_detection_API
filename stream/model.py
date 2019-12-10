@@ -5,7 +5,7 @@ from .i3d_inception import Inception_Inflated3d,conv3d_bn
 from keras.models import Model
 from keras.layers import Activation
 
-def loadModel(numberOfClasses,inputFrames, frameDims, withWeights = False , withTop = False):
+def loadModel(numberOfClasses,inputFrames, frameDims,withWeights = False , withTop = False):
     weights = None
     if withWeights : weights = 'rgb_inception_i3d'
     model = Inception_Inflated3d(
@@ -14,14 +14,15 @@ def loadModel(numberOfClasses,inputFrames, frameDims, withWeights = False , with
                 input_shape=(inputFrames, *frameDims),
                 dropout_prob=0.5,
                 endpoint_logit=False,
-                classes=numberOfClasses)
+                classes=numberOfClasses,
+                )
 
     if not withTop:    
         x = model.output
         x = Dropout(0.5)(x)
 
         x = conv3d_bn(x,numberOfClasses, 1, 1, 1, padding='same', 
-                        use_bias=True, use_activation_fn=False, use_bn=False)
+                        use_bias=True, use_activation_fn=False, use_bn=False, name=str(modelId)+'90')
         
         num_frames_remaining = int(x.shape[1])
         x = Reshape((num_frames_remaining, numberOfClasses))(x)
@@ -30,8 +31,8 @@ def loadModel(numberOfClasses,inputFrames, frameDims, withWeights = False , with
         x = Lambda(lambda x: K.mean(x, axis=1, keepdims=False),
                         output_shape=lambda s: (s[0], s[2]))(x)
 
-        predictions = Activation('softmax')(x)
-        model = Model(model.input, predictions)
+        predictions = Activation('softmax', name=str(modelId)+'91')(x)
+        model = Model(model.input, predictions, name=str(modelId)+'_i3d')
 
     model._make_predict_function()
     

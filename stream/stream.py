@@ -4,6 +4,8 @@ import numpy as np
 import threading
 import time
 from .model import loadModel
+import tensorflow as tf
+import keras
 from .classification import classify_clip, calculate_prediction, anotate_clip
    
 
@@ -11,7 +13,7 @@ def create_stream(src,labels_path,clip_frames = 16 , frame_dims = (224,224,3), p
 
     labels = [x.strip() for x in open(labels_path)]
 
-    model = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames, frameDims = frame_dims, withWeights= True , withTop= True) 
+    model = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames, frameDims = frame_dims,withWeights= True , withTop= True) 
     
     classified_stream = ClassificationStream(src,model,labels,clip_frames=clip_frames
                                 ,prediction_memory=prediction_memory,
@@ -37,6 +39,7 @@ def stream_reader(src,buffer,lock): #handel streaming connection and recieving h
         time.sleep(0.005)        
 
 def classifier(stream): # handel classification here
+
     while True:
         buffer_length = 0
         clip = []
@@ -55,7 +58,7 @@ def classifier(stream): # handel classification here
 
         with stream.classification_lock:
             stream.classified_buffer.extend(clip)   
-                
+                        
 
 class ClassificationStream:
     def __init__(self,src, model, label_list, clip_frames = 16, prediction_memory = 5, prediction_threshold = 30):
