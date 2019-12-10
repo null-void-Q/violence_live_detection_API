@@ -34,7 +34,7 @@ def stream_reader(src,buffer,lock): #handel streaming connection and recieving h
         else: # try reconnecting / terminating process here // and in prodcasting
             print('Stream Disconnected: trying to reconnect...')
             time.sleep(0.5)
-        cv2.waitKey(1)    
+        time.sleep(0.005)        
 
 def classifier(stream): # handel classification here
     while True:
