@@ -4,20 +4,20 @@ import numpy as np
 import threading
 import time
 from .model import loadModel
-import tensorflow as tf
-import keras
 from .classification import classify_clip, calculate_prediction, anotate_clip
-   
+import keras.backend as K  
+from tensorflow import Graph
 
 def create_stream(src,labels_path,clip_frames = 16 , frame_dims = (224,224,3), prediction_threshold =30 ,prediction_memory = 5): #stream setup
 
     labels = [x.strip() for x in open(labels_path)]
-
-    model = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames, frameDims = frame_dims,withWeights= True , withTop= True) 
+    graph = Graph()
+    with graph.as_default():
+        model = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames, frameDims = frame_dims,withWeights= True , withTop= True) 
     
     classified_stream = ClassificationStream(src,model,labels,clip_frames=clip_frames
                                 ,prediction_memory=prediction_memory,
-                                prediction_threshold=prediction_threshold)
+                                prediction_threshold=prediction_threshold,graph=graph)
 
     classified_stream.start_recieving_stream() # return a bool make sure it works
     classified_stream.start_classifying_stream()      # return a bool make sure it works
@@ -50,7 +50,7 @@ def classifier(stream): # handel classification here
                     clip.append(stream.stream_buffer.popleft())
             else: continue
 
-        prediction = classify_clip(stream.model,clip)
+        prediction = classify_clip(stream.model,clip,stream.graph)
         stream.update_predictions(prediction)
 
         label = calculate_prediction(stream.predictions,stream.label_list)
@@ -61,11 +61,11 @@ def classifier(stream): # handel classification here
                         
 
 class ClassificationStream:
-    def __init__(self,src, model, label_list, clip_frames = 16, prediction_memory = 5, prediction_threshold = 30):
+    def __init__(self,src, model, label_list, clip_frames = 16, prediction_memory = 5, prediction_threshold = 30,graph=None):
         self.src = src
         self.model = model
         self.label_list = label_list
-
+        self.graph = graph
         self.clip_frames = clip_frames
         self.prediction_memory = prediction_memory
         self.prediction_threshold = prediction_threshold

@@ -1,15 +1,16 @@
 from .transforms import preprocess_input
 import numpy as np
 import cv2
-def classify_clip(model,clip):
-    processed_clip = []
-    for frame in clip:
-        processed_frame = preprocess_input(frame)
-        processed_clip.append(processed_frame)
-    processed_clip = np.expand_dims(processed_clip,axis=0)
-    predictions = model.predict(processed_clip, batch_size=len(clip), verbose=0, steps=None)
-    predictions = predictions[0]
-    return predictions          
+def classify_clip(model,clip,graph):
+    with graph.as_default():
+        processed_clip = []
+        for frame in clip:
+            processed_frame = preprocess_input(frame)
+            processed_clip.append(processed_frame)
+        processed_clip = np.expand_dims(processed_clip,axis=0)
+        predictions = model.predict(processed_clip, batch_size=len(clip), verbose=0, steps=None)
+        predictions = predictions[0]
+        return predictions          
 
 def getTopNindecies(array,n):
     sorted_indices = np.argsort(array)[::-1]
