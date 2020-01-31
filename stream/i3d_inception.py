@@ -33,12 +33,13 @@ from keras.utils import layer_utils
 from keras.utils.data_utils import get_file
 from keras import backend as K
 
-WEIGHTS_NAME = ['rgb_inception_i3d', 'flow_inception_i3d']
+WEIGHTS_NAME = ['rgb_inception_i3d', 'flow_inception_i3d','v_inception_i3d']
 
 # path to pretrained models with top (classification layer)
 WEIGHTS_PATH = {
     'rgb_inception_i3d': 'https://drive.google.com/uc?export=download&id=1JnqeLIM1izoccgz60fQJSWxuI00nf0_N',
-    'flow_inception_i3d' : 'https://drive.google.com/uc?export=download&id=1YTik34v8jgPoN4UAF0k-g1rIqvwzuWrr'
+    'flow_inception_i3d' : 'https://drive.google.com/uc?export=download&id=1YTik34v8jgPoN4UAF0k-g1rIqvwzuWrr',
+    'v_inception_i3d':'https://drive.google.com/uc?export=download&id=17C4SyroP0iPMh3Pip7Xk-gw0TbfaJ951',
 }
 
 # path to pretrained models with no top (no classification layer)
@@ -282,15 +283,17 @@ def Inception_Inflated3d(include_top=True,
         ValueError: in case of invalid argument for `weights`,
             or invalid input shape.
     """
+    if weights == WEIGHTS_NAME[2] and not include_top:
+        raise ValueError('The Violence model cant be instatiated without top')        
     if not (weights in WEIGHTS_NAME or weights is None or os.path.exists(weights)):
         raise ValueError('The `weights` argument should be either '
                          '`None` (random initialization) or %s' % 
                          str(WEIGHTS_NAME) + ' ' 
                          'or a valid path to a file containing `weights` values')
 
-    if weights in WEIGHTS_NAME and include_top and classes != 400:
+    if weights in WEIGHTS_NAME and include_top and (classes != 400 and classes != 2):
         raise ValueError('If using `weights` as one of these %s, with `include_top`'
-                         ' as true, `classes` should be 400' % str(WEIGHTS_NAME))
+                         ' as true, `classes` should be 400 or 2' % str(WEIGHTS_NAME))
 
     # Determine proper input shape
     input_shape = _obtain_input_shape(
@@ -519,11 +522,15 @@ def Inception_Inflated3d(include_top=True,
 
         elif weights == WEIGHTS_NAME[1]: # flow_kinetics
             if include_top:
-                weights_url = WEIGHTS_PATH['flow_inception_i3dy']
+                weights_url = WEIGHTS_PATH['flow_inception_i3d']
                 model_name = 'i3d_inception_flow.h5'
             else:
-                weights_url = WEIGHTS_PATH_NO_TOP['flow_inception_i3dy']
+                weights_url = WEIGHTS_PATH_NO_TOP['flow_inception_i3d']
                 model_name = 'i3d_inception_flow_no_top.h5'
+        elif weights == WEIGHTS_NAME[2]: # violence_model
+            
+            weights_url = WEIGHTS_PATH['v_inception_i3d']
+            model_name = 'v_inception_i3d.h5'               
 
         downloaded_weights_path = get_file(model_name, weights_url, cache_subdir='models')
         model.load_weights(downloaded_weights_path)

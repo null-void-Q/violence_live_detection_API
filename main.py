@@ -1,26 +1,42 @@
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response, request, make_response
 import cv2
 import time
 from stream.stream import create_stream
-app = Flask(__name__)
+import json
 
-streams = ['./mock_data/1.mp4','./mock_data/2.mp4','./mock_data/3.mp4']
-def get_stream(id):
-    try:
-    	return streams[int(id)]
-    except:
-    	print('*** Error getting stream: No stream for provided id')
-def add_stream(name):
-    streams.append(name) # needs validation
+app = Flask('VD')
 
+streams = {}
 
-@app.route('/video_feed/<id>/', methods=["GET"])
+@app.route('/start_stream/', methods=['POST', 'GET'])    
+def start_stream():
+    global streams
+    if request.method == 'POST':
+        streamId = request.form["stream_id"]
+        streamSource = request.form["stream_source"]
+        try: # TODO handel stream source error
+            cs = create_stream(streamSource,'./txt/violence_labels.txt')
+            streams[str(streamId)] = cs
+            resp = make_response({'message':'stream started.', 'stream_url':'/video_feed/'+str(streamId)}, 200)
+        except Exception as e:
+            print(e)
+            resp = make_response({'error':'Starting Stream Failed!'}, 400)
+
+        resp.headers["Access-Control-Allow-Origin"] = "*"        
+        return resp
+        
+
+@app.route('/video_feed/<id>/')
 def video_feed(id):
+    global streams
 
-    cs = create_stream(get_stream(id),'./txt/label_map.txt')
-    time.sleep(2.0) # give stream a head start
+    if not id in streams:
+        resp = make_response({'error':'Stream Not Found.'}, 404)
+        resp.headers["Access-Control-Allow-Origin"] = "*"   
+        return resp
 
-    return Response(cs.stream(delay=0.05),
+    cs = streams[id]
+    return Response(cs.stream(fps=30),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 

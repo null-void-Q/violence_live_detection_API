@@ -5,67 +5,93 @@ import threading
 import time
 from .model import loadModel
 from .classification import classify_clip, calculate_prediction, anotate_clip
-import keras.backend as K  
-from tensorflow import Graph
+from .utils import store_clip   
+import os
 
-def create_stream(src,labels_path,clip_frames = 16 , frame_dims = (224,224,3), prediction_threshold =30 ,prediction_memory = 5): #stream setup
+def create_stream(src,labels_path,clip_frames = 16 , frame_dims = (224,224,3), prediction_threshold = 55 ,prediction_memory = 5): #stream setup
 
     labels = [x.strip() for x in open(labels_path)]
-    graph = Graph()
-    with graph.as_default():
-        model = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames, frameDims = frame_dims,withWeights= True , withTop= True) 
-    
-    classified_stream = ClassificationStream(src,model,labels,clip_frames=clip_frames
+    model,session,graph = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames,frameDims= frame_dims,withWeights= 'v_inception_i3d' , withTop= True)
+    classified_stream = ClassificationStream(src,labels,model,clip_frames=clip_frames,frame_dims = frame_dims
                                 ,prediction_memory=prediction_memory,
-                                prediction_threshold=prediction_threshold,graph=graph)
+                                prediction_threshold=prediction_threshold,
+                                session=session,
+                                graph=graph)
 
     classified_stream.start_recieving_stream() # return a bool make sure it works
+    time.sleep(0.5)
     classified_stream.start_classifying_stream()      # return a bool make sure it works
 
     return classified_stream
 
 
-def stream_reader(src,buffer,lock): #handel streaming connection and recieving here
+def stream_reader(src,buffer,lock,max_buffer_size = 300): #handel streaming connection and recieving here
     cap = cv2.VideoCapture(src)
     while True:
-        success, frame = cap.read()
-        if success:
-            success,frame=cap.read()
-            with lock:
-                buffer.append(frame)
-        else: # try reconnecting / terminating process here // and in prodcasting
-            print('Stream Disconnected: trying to reconnect...')
-            time.sleep(0.5)
-        time.sleep(0.005)        
+        if(len(buffer) < max_buffer_size ):
+            success, frame = cap.read()
+            if success:
+                with lock:
+                    buffer.append(frame)
+            else: # try reconnecting / terminating process here // and in prodcasting
+                print('Stream Disconnected: trying to reconnect...')
+                time.sleep(1.0)
+        else:
+            time.sleep(2.0) 
+            continue        
+        time.sleep(0.01)        
 
-def classifier(stream): # handel classification here
-
+def classifier(stream, max_buffer_size = 300): # handel classification here 
+    saveCounter = -1
+    maxSaveClipSize = 10
+    saveClip = []
     while True:
+        if len(stream.classified_buffer) >= max_buffer_size:
+            time.sleep(2.0)
+            continue
+
         buffer_length = 0
         clip = []
-        with stream.stream_lock:
-            buffer_length = len(stream.stream_buffer)
-            if buffer_length >= stream.clip_frames:
+        buffer_length = len(stream.stream_buffer)
+        if buffer_length >= stream.clip_frames:
+            with stream.stream_lock:
                 for i in range(stream.clip_frames):
                     clip.append(stream.stream_buffer.popleft())
-            else: continue
+        else:
+            time.sleep(0.5) 
+            continue
 
-        prediction = classify_clip(stream.model,clip,stream.graph)
+        prediction = classify_clip(stream.model,clip,stream.session,stream.graph)
         stream.update_predictions(prediction)
 
         label = calculate_prediction(stream.predictions,stream.label_list)
-        anotate_clip(clip,label,stream.prediction_threshold)
+
+        if label['label'] == 'punching person (boxing)': 
+            saveCounter = 0
+        if saveCounter != -1:
+            saveClip.extend(np.copy(clip))
+            saveCounter+=1
+            if saveCounter > maxSaveClipSize:
+                clip_saver = threading.Thread(target=store_clip, args=(saveClip,))
+                clip_saver.daemon = True
+                clip_saver.start()   
+                saveCounter = -1
+
+        clip = anotate_clip(clip,label,stream.prediction_threshold)
 
         with stream.classification_lock:
             stream.classified_buffer.extend(clip)   
                         
-
 class ClassificationStream:
-    def __init__(self,src, model, label_list, clip_frames = 16, prediction_memory = 5, prediction_threshold = 30,graph=None):
+    def __init__(self,src, label_list, model,session= None ,graph=None,clip_frames = 16, frame_dims= (224,224,3),prediction_memory = 5, prediction_threshold = 30):
         self.src = src
-        self.model = model
         self.label_list = label_list
+        self.model= model
+        self.session = session
         self.graph = graph
+        
+
+        self.frame_dims = frame_dims 
         self.clip_frames = clip_frames
         self.prediction_memory = prediction_memory
         self.prediction_threshold = prediction_threshold
@@ -73,7 +99,7 @@ class ClassificationStream:
         self.predictions = deque([])
         self.stream_buffer = deque([])
         self.classified_buffer = deque([])
-
+        
         self.stream_lock = threading.Lock()
         self.stream_reader = threading.Thread(target=stream_reader, args=(self.src,self.stream_buffer,self.stream_lock))
         self.stream_reader.daemon = True
@@ -83,20 +109,36 @@ class ClassificationStream:
         self.stream_classifier = threading.Thread(target=classifier, args=(self,))
         self.stream_classifier.daemon = True
 
-    def stream(self,delay): # handel stream prodcasting here
+    def stream(self,fps = 30): # handel stream prodcasting here / TODO if buffer is empty for x time kill process
+        fail_count = 0
+        delay = round(1/fps,2)
         while True:
-            buffer_length = 0
-            with self.classification_lock:
-                buffer_length = len(self.classified_buffer)
-                if buffer_length > 0:
+
+            buffer_length = len(self.classified_buffer)
+            
+            if buffer_length > 0:
+                with self.classification_lock:
                     frame = self.classified_buffer.popleft()
-                else: continue
+                fail_count = 0
+            else:
+                if fail_count > 3:
+                    self.stop_stream()
+                fail_count+=1
+                time.sleep(1.0)   # handel diconnection / buffering
+                continue
             time.sleep(delay)      
             ret, buf = cv2.imencode('.jpg', frame)
             frame = buf.tobytes()
             yield (b'--frame\r\n'
                 b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')        
-
+    def stop_stream(self):
+    
+        self.stream_reader._stop()
+        self.stream_reader.join(3.0)
+        self.stream_classifier._stop()
+        self.stream_classifier.join(3.0)
+        print('stream dissconnected: ',self.src)
+        exit(1)
     def start_recieving_stream(self):
         self.stream_reader.start()
 

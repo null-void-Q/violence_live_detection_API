@@ -36,6 +36,5 @@ def imageResize(image, dim, inter = cv2.INTER_LINEAR):
 def preprocess_input(img):
     frame = imageResize(img,256)
     frame = centerCrop(frame,224)
-    
     frame = (frame/255.)*2 - 1  
     return frame
