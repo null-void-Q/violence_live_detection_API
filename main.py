@@ -4,7 +4,7 @@ import time
 from stream.stream import create_stream
 import json
 
-app = Flask('VD')
+app = Flask('Live-Violence-Detection')
 
 streams = {}
 
@@ -15,7 +15,7 @@ def start_stream():
         streamId = request.form["stream_id"]
         streamSource = request.form["stream_source"]
         try: # TODO handel stream source error
-            cs = create_stream(streamSource,'./txt/violence_labels.txt')
+            cs = create_stream(streamSource,'./txt/violence_labels.txt','/video_feed/'+streamId)
             streams[str(streamId)] = cs
             resp = make_response({'message':'stream started.', 'stream_url':'/video_feed/'+str(streamId)}, 200)
         except Exception as e:
@@ -24,7 +24,22 @@ def start_stream():
 
         resp.headers["Access-Control-Allow-Origin"] = "*"        
         return resp
-        
+
+@app.route('/get_stream/', methods=['POST', 'GET'])    
+def get_stream(): 
+    global streams
+    if request.method == 'POST':
+        streamId = request.form["stream_id"]
+        try: # TODO handel stream id error
+            if streamId in streams:
+                stream = streams[str(streamId)]
+                resp = make_response({'stream_url':stream.stream_url}, 200)
+        except Exception as e:
+            print(e)
+            resp = make_response({'error':'getting Stream Failed!'}, 400)
+
+        resp.headers["Access-Control-Allow-Origin"] = "*"        
+        return resp       
 
 @app.route('/video_feed/<id>/')
 def video_feed(id):

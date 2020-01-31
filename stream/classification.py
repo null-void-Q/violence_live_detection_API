@@ -33,11 +33,17 @@ def calculate_prediction(predictions, class_map):
     return result
         
 
-def write_label(frame, prediction, threshold,alertLabel = 'Violence' ,default_label = {'label':'***', 'score':'***'}):
+def write_label(frame, prediction, threshold,alertLabel = 'Violence' , flag = False):
     font= cv2.FONT_HERSHEY_SIMPLEX
-    bottomLeftCornerOfText = (50,20)
-    fontScale              = 1
-    fontColor              = (255,255,255)
+    circle_center = (15,15)
+    circle_radius = 2
+    circle_color = (0,255,0)
+    circle_thikcness = 10
+
+    text_location = (20,60)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+
     lineType               = 2
     bordersize             = 10
     borderColor            = (0,0,255)
@@ -45,40 +51,33 @@ def write_label(frame, prediction, threshold,alertLabel = 'Violence' ,default_la
 
     label = prediction
 
-    if label['score'] < threshold:
-        label = default_label
-
     if label['label'] == alertLabel:
-       
-        frame = cv2.copyMakeBorder(
-            frame,
-            top=bordersize,
-            bottom=bordersize,
-            left=bordersize,
-            right=bordersize,
-            borderType=cv2.BORDER_CONSTANT,
-            value=[*borderColor]
-        )
-
+        
+        frame = cv2.putText(frame,label['label']+' Detected', 
+            text_location, 
+            font, 
+            font_scale,
+            borderColor,
+            lineType,)
+        if flag:
+            frame = cv2.copyMakeBorder(frame,
+                    top=bordersize,
+                    bottom=bordersize,
+                    left=bordersize,
+                    right=bordersize,
+                    borderType=cv2.BORDER_CONSTANT,
+                    value=[*borderColor])
+            
     else:
-        frame = cv2.putText(frame,label['label'], 
-            bottomLeftCornerOfText, 
-            font, 
-            fontScale,
-            fontColor,
-            lineType)
+        cv2.circle(frame, circle_center, circle_radius, circle_color,circle_thikcness, lineType)
 
-        frame = cv2.putText(
-            frame,
-            str(label['score'])+'%', 
-            (50,50), 
-            font, 
-            fontScale,
-            (0,255,0),
-            lineType)   
     return frame
+
 def anotate_clip(clip,label,threshold):
     out_clip = []
-    for frame in clip:
-        out_clip.append(write_label(frame,label,threshold))
+    flag = True
+    for i,frame in enumerate(clip):
+        out_clip.append(write_label(frame,label,threshold,flag=flag))
+        flag = ((i+30) % 30 == 0)
     return  out_clip    
+        

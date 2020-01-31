@@ -39,7 +39,7 @@ WEIGHTS_NAME = ['rgb_inception_i3d', 'flow_inception_i3d','v_inception_i3d']
 WEIGHTS_PATH = {
     'rgb_inception_i3d': 'https://drive.google.com/uc?export=download&id=1JnqeLIM1izoccgz60fQJSWxuI00nf0_N',
     'flow_inception_i3d' : 'https://drive.google.com/uc?export=download&id=1YTik34v8jgPoN4UAF0k-g1rIqvwzuWrr',
-    'v_inception_i3d':'https://drive.google.com/uc?export=download&id=17C4SyroP0iPMh3Pip7Xk-gw0TbfaJ951',
+    'v_inception_i3d':'https://drive.google.com/uc?export=download&id=1U9D0I8_CEcdLeupSYr7sdIZqVDxIFaZ6',
 }
 
 # path to pretrained models with no top (no classification layer)
