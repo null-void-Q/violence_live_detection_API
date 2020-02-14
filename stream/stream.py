@@ -3,19 +3,29 @@ import cv2
 import numpy as np
 import threading
 import time
+import queue
 from .model import loadModel
 from .classification import classify_clip, calculate_prediction, anotate_clip
 from .utils import store_clip   
 import os
 
-alert_label = 'Violence'
+EVENT_QUEUE = queue.Queue()
+ALERT_LABEL= 'Violence'
 
 
-def create_stream(src,labels_path,stream_url,clip_frames = 64 , frame_dims = (224,224,3), prediction_threshold = 50 ,prediction_memory = 4): #stream setup
+def event_dispatcher():
+    global EVENT_QUEUE
+    while True:
+        if not EVENT_QUEUE.empty():
+            current_event = EVENT_QUEUE.get()
+            #print(current_event)
+            yield("data: {}\n\n".format(current_event))
+
+def create_stream(src,labels_path,stream_url,stream_id,clip_frames = 64 , frame_dims = (224,224,3), prediction_threshold = 70 ,prediction_memory = 3): #stream setup
 
     labels = [x.strip() for x in open(labels_path)]
     model,session,graph = loadModel(numberOfClasses = len(labels), inputFrames = clip_frames,frameDims= frame_dims,withWeights= 'v_inception_i3d' , withTop= True)
-    classified_stream = ClassificationStream(src,labels,model,stream_url,clip_frames=clip_frames,frame_dims = frame_dims
+    classified_stream = ClassificationStream(src,labels,model,stream_url,stream_id,clip_frames=clip_frames,frame_dims = frame_dims
                                 ,prediction_memory=prediction_memory,
                                 prediction_threshold=prediction_threshold,
                                 session=session,
@@ -29,13 +39,14 @@ def create_stream(src,labels_path,stream_url,clip_frames = 64 , frame_dims = (22
 
                         
 class ClassificationStream:
-    def __init__(self,src, label_list, model,stream_url,session= None ,graph=None,clip_frames = 64, frame_dims= (224,224,3),prediction_memory = 4, prediction_threshold = 50):
+    def __init__(self,src, label_list, model,stream_url,stream_id,session= None ,graph=None,clip_frames = 64, frame_dims= (224,224,3),prediction_memory = 4, prediction_threshold = 50):
         self.src = src
         self.label_list = label_list
         self.model= model
         self.session = session
         self.graph = graph
         
+        self.stream_id= stream_id
         self.stream_url=stream_url
 
         self.frame_dims = frame_dims 
@@ -70,18 +81,19 @@ class ClassificationStream:
                     frame = self.classified_buffer.popleft()
                 fail_count = 0
             else:
-                if fail_count > 3:
-                    ret, buf = cv2.imencode('.jpg', np.zeros((100,100,1)))
+                if fail_count > 5:
+                    ret, buf = cv2.imencode('.jpg', np.zeros((1,1,1)))
                     frame = buf.tobytes()        
                     yield (b'--frame\r\n'
                                  b'Content-Type: image/jpeg\r\n\r\n'+ frame + b'\r\n')
                     self.stop_stream()
                     
                 fail_count+=1
-                time.sleep(1.0)   # handel buffering
+                time.sleep(0.5)   # handel buffering
                 continue
 
-            time.sleep(delay)      
+            time.sleep(delay)
+            frame = cv2.resize(frame,(640,480))      
             ret, buf = cv2.imencode('.jpg', frame)
             frame = buf.tobytes()
             yield (b'--frame\r\n'
@@ -94,6 +106,7 @@ class ClassificationStream:
         self.stream_classifier.join()
         print('\n')
         print('-'*50)
+        print('\n')
         print('stream dissconnected: ',self.src)
         exit(1)
     def start_recieving_stream(self):
@@ -101,14 +114,14 @@ class ClassificationStream:
 
     def start_classifying_stream(self):
         self.stream_classifier.start()
-
+    
     def update_predictions(self,prediction):
         self.predictions.append(prediction)
         if len(self.predictions) > self.prediction_memory:
             self.predictions.popleft()
 
 
-def stream_reader(src,buffer,lock,stop_flag,max_buffer_size = 300): #handel streaming connection and recieving here
+def stream_reader(src,buffer,lock,stop_flag,max_buffer_size = 500): #handel streaming connection and recieving here
     cap = cv2.VideoCapture(src)
     while not stop_flag.is_set():
         if(len(buffer) < max_buffer_size ):
@@ -120,14 +133,15 @@ def stream_reader(src,buffer,lock,stop_flag,max_buffer_size = 300): #handel stre
                 print('Stream Disconnected: trying to reconnect...')
                 time.sleep(1.0)
         else:
-            time.sleep(2.0) 
+            time.sleep(1.0) 
             continue        
-        time.sleep(0.01)        
+        time.sleep(0.005)        
 
 def classifier(stream,max_buffer_size = 100): # handel classification here 
     saveCounter = -1
     maxSaveClipSize = 5
     saveClip = []
+    event_flag=True
     while not stream.stop_flag.is_set():
         if len(stream.classified_buffer) >= max_buffer_size:
             time.sleep(2.0)
@@ -151,8 +165,16 @@ def classifier(stream,max_buffer_size = 100): # handel classification here
         
         # handel event detected
         ####
-        if label['label'] == alert_label: 
-            saveCounter = 0
+
+        if label['label'] == ALERT_LABEL: 
+            saveCounter = 0 # trigger recording
+            if event_flag:
+                event_flag = False
+                event_handler(event={'message':'Violence Destected', # handle event
+                                'stream_id':stream.stream_id,
+                                'stream_url':stream.stream_url}) 
+
+        # recording on
         if saveCounter != -1:
             saveClip.extend(np.copy(clip))
             saveCounter+=1
@@ -161,9 +183,19 @@ def classifier(stream,max_buffer_size = 100): # handel classification here
                 clip_saver.daemon = True
                 clip_saver.start()   
                 saveCounter = -1
+                event_flag = True
+
         #####
         
         clip = anotate_clip(clip,label,stream.prediction_threshold)
 
         with stream.classification_lock:
-            stream.classified_buffer.extend(clip)   
+            stream.classified_buffer.extend(clip)
+
+def event_handler(event):
+    global EVENT_QUEUE
+    def handel_event(event):
+        EVENT_QUEUE.put(event)
+    thread = threading.Thread(target=handel_event, args=(event,))
+    thread.daemon = True
+    thread.start()

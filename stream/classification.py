@@ -1,6 +1,7 @@
 from .transforms import preprocess_input
 import numpy as np
 import cv2
+import datetime
 from keras import backend as K
 def classify_clip(model,clip,session=None,graph=None):
     #K.set_session(session)
@@ -51,9 +52,15 @@ def write_label(frame, prediction, threshold,alertLabel = 'Violence' , flag = Fa
 
     label = prediction
 
+
+    timestamp = datetime.datetime.now()
+    cv2.putText(frame, timestamp.strftime(
+			"%A %d %B %Y %I:%M:%S%p"), (10, frame.shape[0] - 10),
+			cv2.FONT_HERSHEY_SIMPLEX, 0.65, (32, 64, 255),1)
+
     if label['label'] == alertLabel:
         
-        frame = cv2.putText(frame,label['label']+' Detected', 
+        cv2.putText(frame,label['label']+' Detected', 
             text_location, 
             font, 
             font_scale,
@@ -78,6 +85,6 @@ def anotate_clip(clip,label,threshold):
     flag = True
     for i,frame in enumerate(clip):
         out_clip.append(write_label(frame,label,threshold,flag=flag))
-        flag = ((i+30) % 30 == 0)
+        flag = ((i+20) % 20 == 0)
     return  out_clip    
         

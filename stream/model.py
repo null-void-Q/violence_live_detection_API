@@ -1,3 +1,4 @@
+import numpy as np
 from keras.layers import Dropout,Dense,GlobalAveragePooling3D
 from keras.layers import Reshape
 from keras.layers import Lambda
@@ -40,5 +41,6 @@ def loadModel(numberOfClasses,inputFrames, frameDims,withWeights = None , withTo
                 model = Model(model.input, predictions)
 
             model._make_predict_function()
-            
+            data = np.random.rand(1,64,224,224,3)
+            model.predict(data)
             return model,session,graph 
