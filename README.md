@@ -1,0 +1,3 @@
+# violence_live_detection_API
+
+documentation in progress ...
